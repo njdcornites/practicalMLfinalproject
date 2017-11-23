@@ -3,9 +3,8 @@ title: "Predicting the Quality of Weigth Lifting Exerice Using Random Forest"
 author: "Nilrey Jim Cornites"
 date: "November 19, 2017"
 output: 
-        html_document: default
         pdf_document: default
-  
+        html_document: default
 ---
 
 ```{r setup, include=FALSE, cache=TRUE}
@@ -18,11 +17,11 @@ This the a final project to Practical Machine Learning Class in coursera.com, 1 
 
 The common problem in research is to quantify how much of a particular activity they do, but rarely to quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict how well they do weight lifting exercise.
 
-Using **random forest** technique, the model predicted the quality of the weighlifting with 99% accuracy `99%` or estimated `1%` out of sample error only using 52 predictors. Top 5 most important predictors are 'roll_belt', 'yaw_belt', 'pitch_forearm', 'pitch_belt' and magnet_dumbbell_z. .
+Using **random forest** technique, the model predicted the quality of the weighlifting with an accuracy of `99%` or estimated `1%` out of sample error only using 52 predictors. Top 5 most important predictors are 'roll_belt', 'yaw_belt', 'pitch_forearm', 'pitch_belt' and magnet_dumbbell_z. Performance of random forest is clearly more supreme compared to Linear Discriminant Analysis.
 
 
 ## Introduction
-Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. See http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har for more details about the data.
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
 
 ## The Data
 
@@ -41,10 +40,12 @@ https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
 
 ## Loading Data and Some Exploratory Analyses
 
-Following code will call Caret package which will be used to build the model, ggplot2 for visualization, and download the training and test set.
+Following code will call Caret package which will be used to build the model, ggplot2 and GGally for visualization, and download the training and test set.
+
 ``` {r}
 library(caret)
 library(ggplot2)
+library(GGally)
 
 #download the data
 Url1 <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
@@ -70,12 +71,13 @@ testing <- read.csv("./data/pml-testing.csv",header=T,sep=",",na.strings=c(""," 
 ### Exploratory Analyses
 
 ``` {r}
-
-library(Amelia)
-dim(training) ; dim(testing) ## succedding exploration will use only training set to avoid bias on tuning the selected model
+dim(training) ; dim(testing)
 
 ```
+
 We see that there are 19,622 rows and 160 columns in the training set while only 20 rows with the same number of fields in testing set. The "classe" variable in the both sets is the outcome to predict.
+
+First thing we can do is to quickly check the structure just to see how variables are formatted and if there are any signs of missing values (`NA`) since we have to deal with it either imputing the values or remove the row if not that much or remove the variable if it have so many missing values. Second, since training data set is sufficiently large to give us reason to further spit it to training and validation set, we will do any exploratory analyses such as checking distribution of each variable, checking linerarity or relationship between variables and outcome on the subset training data so we can avoid bias in selecting model.
 
 ``` {r echo=FALSE}
 str(training)
@@ -84,29 +86,31 @@ str(training)
 We can see that of 160 columns, there are many variables with lots of missing values (`NA`). We might also want to check for variables(except the outcome variable) if there's any that has variance near zero
 
 ### Data Preprocessing
-We will check those those variable that has near zero variance and remove those predictors. We will also remove those predictor with missing value. We will put back those removed variables with imputed values if the prediction model looks bad.
+We will check those those variable that has near zero variance and remove those predictors. We will also remove those with fields with missing values since it gonna mess up the modeling.
 
 ```{r}
 nzvariance<-nearZeroVar(training, saveMetrics = T)
 toremove<-nzvariance[nzvariance[,"nzv"],]
 
-print(toremove)
+print(toremove) ## check what variable will be remove
 
 nrow(toremove) ## number of removed predictor
 
 training <- training[,!nzvariance$nzv]
 testing <- testing[,!nzvariance$nzv]
+dim(training) ; dim(testing)
 
 ```
 
-There are now `159-toremove` remaining predictor variables. The graph shows below the remainind predictor with missing value which will be removed.
+There are now `116` remaining predictor variables excluding the last variable which is our outcome variable. The graph shows below the remained predictors with missing value which will be removed.
 
 ```{r}
-library(Amelia)
-missmap(training)
+# visualize variables with missing values
+percentmissing<-colSums(is.na(training))/nrow(training)
+
+qplot(y=percentmissing, x=index, data=data.frame(percentmissing=percentmissing, index=1:ncol(training)))
 
 # Remove variables with missing values
-
 nomissing<-colSums(is.na(training)) == 0
 
 training_filter_na <- training[,nomissing]
@@ -131,6 +135,14 @@ training_clean <- newtraining[inTrain,]
 validation_clean <- newtraining[-inTrain,]
 ```
 
+We can use ggpairs to explore the `training_clean` data. We will explore the relationship of predictor 'roll_belt', 'yaw_belt', 'pitch_forearm', 'pitch_belt' and magnet_dumbbell_z with the outcome variable.
+
+```{r}
+
+ggpairs(training_clean, columns = c('roll_belt', 'yaw_belt', 'pitch_forearm', 'pitch_belt' , 'magnet_dumbbell_z', 'classe'), aes(color=classe, alpha = 0.2))
+
+```
+
 
 ## Model Building
 
@@ -140,9 +152,6 @@ Caveat: LDA has strict assumptions to follow that are the same to linear regress
 
 ``` {r}
 set.seed(123)
-
-
-
 # Fit LDA model
 ldaFit <- train(classe ~ ., method = "lda", data = training_clean, importance = T, trControl = trainControl(method = "cv", number = 4))
 
@@ -161,9 +170,10 @@ rf_validation_pred <- predict(rfFit, newdata=validation_clean)
 
 ```
 
+
 ## Model Evaluation
 
-We see that random forest model has way better accuracy. The estimated out sample error is about 1% compared to LDA which have is about 30% error rate.
+We will now evaluate the models using the validation set to estimate the out of sample error rate. We see that random forest model has way better accuracy. The estimated out sample error is about 1% compared to LDA which have is about 30% error rate.
 
 ``` {r}
 # Check model performance
